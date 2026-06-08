@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "Light Bill Calculator"
+version = "1.0.0"
+id = "artifacts/light-bill"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 21653
+
+[services.development]
+run = "pnpm --filter @workspace/light-bill run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/light-bill", "run", "build" ]
+publicDir = "artifacts/light-bill/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "21653"
+BASE_PATH = "/"

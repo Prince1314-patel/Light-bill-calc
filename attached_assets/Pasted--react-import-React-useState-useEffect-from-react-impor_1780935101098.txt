@@ -1,0 +1,172 @@
+```react
+import React, { useState, useEffect } from 'react';
+import { Calculator, Clock, Globe, PlusCircle, FileText, IndianRupee } from 'lucide-react';
+
+// --- 1. FIREBASE SETUP ---
+import { initializeApp } from "firebase/app";
+import { getFirestore, collection, addDoc, onSnapshot, query, orderBy } from "firebase/firestore";
+
+// PASTE YOUR FIREBASE CONFIG HERE:
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+  projectId: "YOUR_PROJECT_ID",
+  storageBucket: "YOUR_PROJECT_ID.appspot.com",
+  messagingSenderId: "YOUR_MESSAGING_ID",
+  appId: "YOUR_APP_ID"
+};
+
+// Initialize Firebase and Firestore
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+// --- Translation Dictionary ---
+const t = {
+  en: {
+    appTitle: "Light Bill Calculator",
+    tabCalc: "Calculator",
+    tabHistory: "History",
+    date: "Date",
+    totalBill: "Total Main Bill Amount (₹)",
+    totalUnits: "Total Units (Main Meter)",
+    prevReading: "Previous Reading (Tenant)",
+    presReading: "Present Reading (Tenant)",
+    calculateBtn: "Calculate & Save to Cloud",
+    summaryTitle: "Bill Summary",
+    unitPrice: "Per Unit Price",
+    tenantUnits: "Units Consumed",
+    tenantFinal: "Tenant Final Bill",
+    noHistory: "No history yet. Calculate a bill to see it here.",
+    error: "Please fill all fields correctly.",
+    readingError: "Present reading must be greater than previous.",
+    success: "Saved to the cloud!"
+  },
+  gu: {
+    appTitle: "લાઇટ બિલ કેલ્ક્યુલેટર",
+    tabCalc: "કેલ્ક્યુલેટર",
+    tabHistory: "જૂનો રેકોર્ડ",
+    date: "તારીખ",
+    totalBill: "કુલ બિલની રકમ (₹)",
+    totalUnits: "કુલ વપરાયેલ યુનિટ (મેઈન મીટર)",
+    prevReading: "પાછલું મીટર રીડિંગ (ભાડૂત)",
+    presReading: "હાલનું મીટર રીડિંગ (ભાડૂત)",
+    calculateBtn: "ગણતરી કરો અને ક્લાઉડમાં સાચવો",
+    summaryTitle: "બિલની વિગત",
+    unitPrice: "એક યુનિટનો ભાવ",
+    tenantUnits: "ભાડૂતના યુનિટ",
+    tenantFinal: "ભાડૂતનું બિલ",
+    noHistory: "હજુ સુધી કોઈ ઈતિહાસ નથી. ગણતરી કરો અને અહીં જુઓ.",
+    error: "કૃપા કરીને બધી વિગતો યોગ્ય રીતે ભરો.",
+    readingError: "હાલનું રીડિંગ પાછલા રીડિંગ કરતાં વધુ હોવું જોઈએ.",
+    success: "ક્લાઉડમાં સાચવવામાં આવ્યું!"
+  }
+};
+
+export default function App() {
+  const [lang, setLang] = useState('en');
+  const [activeTab, setActiveTab] = useState('calc');
+  const [history, setHistory] = useState([]);
+  
+  // Form State
+  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [totalBill, setTotalBill] = useState('');
+  const [totalUnits, setTotalUnits] = useState('');
+  const [prevReading, setPrevReading] = useState('');
+  const [presReading, setPresReading] = useState('');
+  
+  const [errorMsg, setErrorMsg] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
+  const [lastResult, setLastResult] = useState(null);
+
+  // --- 2. FETCH HISTORY FROM CLOUD ---
+  useEffect(() => {
+    // Query the 'bills' collection, ordered by date descending
+    const q = query(collection(db, "bills"), orderBy("date", "desc"));
+    
+    // onSnapshot listens for real-time updates
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const billsData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setHistory(billsData);
+    });
+
+    // Cleanup listener on unmount
+    return () => unsubscribe();
+  }, []);
+
+  // --- 3. AUTO-FILL PREVIOUS READING ---
+  useEffect(() => {
+    if (history.length > 0 && activeTab === 'calc' && !prevReading) {
+      // Grab the most recent reading from the cloud history
+      setPrevReading(history[0].presReading.toString());
+    }
+  }, [history, activeTab]);
+
+  // --- 4. SAVE TO CLOUD ---
+  const handleCalculate = async (e) => {
+    e.preventDefault();
+    setErrorMsg('');
+    setSuccessMsg('');
+    setLastResult(null);
+
+    const bill = parseFloat(totalBill);
+    const units = parseFloat(totalUnits);
+    const prev = parseFloat(prevReading);
+    const pres = parseFloat(presReading);
+
+    if (!date || isNaN(bill) || isNaN(units) || isNaN(prev) || isNaN(pres)) {
+      setErrorMsg(t[lang].error); return;
+    }
+    if (pres < prev) {
+      setErrorMsg(t[lang].readingError); return;
+    }
+
+    const unitPrice = bill / units;
+    const tenantUnits = pres - prev;
+    const tenantBill = unitPrice * tenantUnits;
+
+    const newRecord = {
+      date,
+      totalBill: bill,
+      totalUnits: units,
+      prevReading: prev,
+      presReading: pres,
+      unitPrice: unitPrice.toFixed(2),
+      tenantUnits: tenantUnits.toFixed(2),
+      tenantBill: Math.round(tenantBill),
+      createdAt: new Date().toISOString()
+    };
+
+    try {
+      // Push the record to Firestore instead of local state
+      await addDoc(collection(db, "bills"), newRecord);
+      
+      setLastResult(newRecord);
+      setSuccessMsg(t[lang].success);
+      
+      setTotalBill('');
+      setTotalUnits('');
+      setPrevReading(pres.toString());
+      setPresReading('');
+    } catch (err) {
+      console.error("Error adding document: ", err);
+      setErrorMsg("Failed to save to cloud. Check your connection.");
+    }
+  };
+
+  const toggleLang = () => setLang(lang === 'en' ? 'gu' : 'en');
+
+  // ... (The entire UI return statement remains exactly the same as the previous version) ...
+  return (
+    // Same UI layout with header, tabs, and form as provided earlier
+    <div className="min-h-screen bg-gray-50 font-sans text-gray-800 pb-10">
+      {/* UI logic omitted for brevity, identical to the previous block */}
+      <h1 className="text-center p-10 font-bold text-gray-400">UI matches previous code block</h1>
+    </div>
+  );
+}
+
+
+```
