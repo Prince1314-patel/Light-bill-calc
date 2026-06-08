@@ -3,13 +3,15 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Light Bill Calculator API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: bills
+    description: Bill records
 paths:
   /healthz:
     get:
@@ -24,6 +26,75 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /bills:
+    get:
+      operationId: listBills
+      tags: [bills]
+      summary: List all bill records
+      responses:
+        "200":
+          description: List of bills
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Bill"
+    post:
+      operationId: createBill
+      tags: [bills]
+      summary: Create a new bill record
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BillInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Bill"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /bills/{id}:
+    delete:
+      operationId: deleteBill
+      tags: [bills]
+      summary: Delete a bill record
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /bills/stats:
+    get:
+      operationId: getBillStats
+      tags: [bills]
+      summary: Get aggregate stats across all bills
+      responses:
+        "200":
+          description: Stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillStats"
 components:
   schemas:
     HealthStatus:
@@ -33,4 +104,88 @@ components:
           type: string
       required:
         - status
-
+    Bill:
+      type: object
+      required:
+        - id
+        - date
+        - totalBill
+        - totalUnits
+        - prevReading
+        - presReading
+        - unitPrice
+        - tenantUnits
+        - tenantBill
+        - createdAt
+      properties:
+        id:
+          type: string
+        date:
+          type: string
+        totalBill:
+          type: number
+        totalUnits:
+          type: number
+        prevReading:
+          type: number
+        presReading:
+          type: number
+        unitPrice:
+          type: number
+        tenantUnits:
+          type: number
+        tenantBill:
+          type: number
+        createdAt:
+          type: string
+    BillInput:
+      type: object
+      required:
+        - date
+        - totalBill
+        - totalUnits
+        - prevReading
+        - presReading
+        - unitPrice
+        - tenantUnits
+        - tenantBill
+      properties:
+        date:
+          type: string
+        totalBill:
+          type: number
+        totalUnits:
+          type: number
+        prevReading:
+          type: number
+        presReading:
+          type: number
+        unitPrice:
+          type: number
+        tenantUnits:
+          type: number
+        tenantBill:
+          type: number
+    BillStats:
+      type: object
+      required:
+        - totalRecords
+        - totalTenantPaid
+        - avgUnitPrice
+        - avgMonthlyBill
+      properties:
+        totalRecords:
+          type: integer
+        totalTenantPaid:
+          type: number
+        avgUnitPrice:
+          type: number
+        avgMonthlyBill:
+          type: number
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
