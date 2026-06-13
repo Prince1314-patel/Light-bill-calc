@@ -197,8 +197,12 @@ export default function DigitalPet() {
           initialY = Math.min(Math.max(0, parsed.y), bounds.maxY);
         }
       }
+      const savedRot = localStorage.getItem("digital_pet_rot");
+      if (savedRot) {
+        userRotationYRef.current = parseFloat(savedRot) || 0;
+      }
     } catch (e) {
-      console.warn("Could not load pet position:", e);
+      console.warn("Could not load pet data:", e);
     }
 
     posRef.current = {
@@ -931,6 +935,11 @@ export default function DigitalPet() {
       const onMouseUpRotate = () => {
         window.removeEventListener("mousemove", onMouseMoveRotate);
         window.removeEventListener("mouseup", onMouseUpRotate);
+        try {
+          localStorage.setItem("digital_pet_rot", userRotationYRef.current.toString());
+        } catch (err) {
+          console.warn("Could not save pet rotation:", err);
+        }
       };
 
       window.addEventListener("mousemove", onMouseMoveRotate);
@@ -977,6 +986,11 @@ export default function DigitalPet() {
       const onTouchEndRotate = () => {
         window.removeEventListener("touchmove", onTouchMoveRotate);
         window.removeEventListener("touchend", onTouchEndRotate);
+        try {
+          localStorage.setItem("digital_pet_rot", userRotationYRef.current.toString());
+        } catch (err) {
+          console.warn("Could not save pet rotation:", err);
+        }
       };
 
       window.addEventListener("touchmove", onTouchMoveRotate, { passive: true });
@@ -1031,6 +1045,11 @@ export default function DigitalPet() {
     e.stopPropagation();
     // Scroll down rotates right, scroll up rotates left
     userRotationYRef.current += e.deltaY * 0.003;
+    try {
+      localStorage.setItem("digital_pet_rot", userRotationYRef.current.toString());
+    } catch (err) {
+      console.warn("Could not save pet rotation:", err);
+    }
   };
 
   return (
