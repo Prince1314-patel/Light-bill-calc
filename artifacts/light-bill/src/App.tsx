@@ -4,6 +4,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 import Home from "@/pages/home";
+import DigitalPet from "@/components/DigitalPet";
 
 const queryClient = new QueryClient();
 
@@ -24,6 +25,7 @@ function App() {
           <Router />
         </WouterRouter>
         <Toaster />
+        <DigitalPet />
       </TooltipProvider>
     </QueryClientProvider>
   );
