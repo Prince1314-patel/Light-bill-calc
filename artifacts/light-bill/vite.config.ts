@@ -2,7 +2,23 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "path";
+import fs from "fs";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
+
+// Load environment files for Vite config
+const rootEnvPath = path.resolve(import.meta.dirname, "..", "..", ".env");
+const localEnvPath = path.resolve(import.meta.dirname, ".env");
+
+if (fs.existsSync(rootEnvPath)) {
+  try {
+    process.loadEnvFile(rootEnvPath);
+  } catch {}
+}
+if (fs.existsSync(localEnvPath)) {
+  try {
+    process.loadEnvFile(localEnvPath);
+  } catch {}
+}
 
 const rawPort = process.env.PORT;
 
@@ -63,6 +79,12 @@ export default defineConfig({
     strictPort: true,
     host: "0.0.0.0",
     allowedHosts: true,
+    proxy: {
+      "/api": {
+        target: "http://localhost:8080",
+        changeOrigin: true,
+      },
+    },
     fs: {
       strict: true,
     },
@@ -71,5 +93,11 @@ export default defineConfig({
     port,
     host: "0.0.0.0",
     allowedHosts: true,
+    proxy: {
+      "/api": {
+        target: "http://localhost:8080",
+        changeOrigin: true,
+      },
+    },
   },
 });
