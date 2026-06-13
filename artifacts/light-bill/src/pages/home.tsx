@@ -55,7 +55,7 @@ const vt = {
     settings: "Settings",
     support: "Support",
     signOut: "Sign Out",
-    billingMonth: "Billing Month",
+    billingMonth: "Billing Date",
     liveSummary: "Live Bill Summary",
     payable: "Tenant Payable Amount",
     consumed: "Consumed",
@@ -74,7 +74,7 @@ const vt = {
     settings: "સેટિંગ્સ",
     support: "સહાયતા",
     signOut: "સાઇન આઉટ",
-    billingMonth: "બિલિંગ મહિનો",
+    billingMonth: "બિલિંગ તારીખ",
     liveSummary: "બિલ વિગત (લાઈવ)",
     payable: "ચૂકવવાપાત્ર રકમ",
     consumed: "વપરાયેલ",
@@ -531,9 +531,9 @@ export default function Home() {
                                           className="w-full border border-outline-variant rounded-DEFAULT p-sm font-data-mono text-data-mono bg-surface-container-lowest focus:outline-none flex justify-between items-center text-left h-auto font-normal text-on-surface cursor-pointer"
                                         >
                                           {field.value ? (
-                                            format(field.value, "MMMM, yyyy")
+                                            format(field.value, "MMMM d, yyyy")
                                           ) : (
-                                            <span className="text-secondary">Pick a month</span>
+                                            <span className="text-secondary">Pick a date</span>
                                           )}
                                           <span className="material-symbols-outlined text-secondary text-[18px]">calendar_today</span>
                                         </button>
@@ -850,15 +850,16 @@ export default function Home() {
                                   className="bg-surface-container-lowest border border-outline-variant rounded-md p-sm flex items-center justify-between transition-colors cursor-pointer group"
                                 >
                                   <div className="flex items-center gap-md">
-                                    <div className={`w-10 h-10 ${circleBg} rounded-full flex items-center justify-center font-label-sm text-label-sm font-bold`}>
-                                      {format(new Date(bill.date), "MMM").toUpperCase()}
+                                    <div className={`w-12 h-12 ${circleBg} rounded-full flex flex-col items-center justify-center font-label-sm text-[10px] leading-tight font-bold shrink-0`}>
+                                      <span>{format(new Date(bill.date), "MMM").toUpperCase()}</span>
+                                      <span className="text-[14px] font-extrabold">{format(new Date(bill.date), "dd")}</span>
                                     </div>
                                     <div>
                                       <p className="font-data-mono text-data-mono font-bold text-on-surface group-hover:text-primary transition-colors">
                                         {t.rupees}{bill.tenantBill.toLocaleString()}
                                       </p>
                                       <p className="font-label-sm text-label-sm text-secondary">
-                                        {bill.tenantUnits} {vt[lang].units}
+                                        {bill.tenantUnits} {vt[lang].units} • {format(new Date(bill.date), "MMM d, yyyy")}
                                       </p>
                                     </div>
                                   </div>
