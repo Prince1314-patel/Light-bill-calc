@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import * as THREE from "three";
 
 type PetState = "idle" | "walk" | "run" | "sit" | "sleep" | "drag" | "fall";
 type PetDirection = "left" | "right";
@@ -51,6 +52,9 @@ export default function DigitalPet() {
   const decisionTimerRef = useRef<number | null>(null);
   const barkTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const particleIdRef = useRef(0);
+
+  // Three.js Canvas Ref
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   // Constants
   const gravity = 0.5;
@@ -227,7 +231,6 @@ export default function DigitalPet() {
 
     // Global click listener to make pet run to location
     const handleWindowClick = (e: MouseEvent) => {
-      // Don't attract if clicking inside a form element, button, input, or nav
       const target = e.target as HTMLElement;
       if (
         target.closest("button") ||
@@ -243,11 +246,9 @@ export default function DigitalPet() {
       }
 
       const bounds = getBounds();
-      // Set target x coordinate
       const clickX = e.clientX - petWidth / 2;
       targetXRef.current = Math.min(Math.max(0, clickX), bounds.maxX);
 
-      // Run towards it
       stateRef.current = "run";
       setState("run");
       
@@ -256,7 +257,6 @@ export default function DigitalPet() {
       setDirection(toLeft ? "left" : "right");
       velRef.current.x = toLeft ? -runSpeed : runSpeed;
 
-      // Happy bark
       triggerBark(Math.random() > 0.5 ? "Run! ⚡" : "Let's go!");
       spawnParticle("heart", petWidth / 2, 0);
     };
@@ -273,13 +273,10 @@ export default function DigitalPet() {
       }
 
       if (isDraggingRef.current) {
-        // Dragging physics
         stateRef.current = "drag";
         if (state !== "drag") setState("drag");
       } else {
         // Normal Physics
-        
-        // Active corner travel overrides normal gravity/friction/attraction logic
         if (targetXRef.current !== null && targetYRef.current !== null) {
           const dx = targetXRef.current - posRef.current.x;
           const dy = targetYRef.current - posRef.current.y;
@@ -298,7 +295,6 @@ export default function DigitalPet() {
             stateRef.current = "run";
             if (state !== "run") setState("run");
             
-            // Navigate straight to corner
             velRef.current.x = (dx / dist) * runSpeed;
             velRef.current.y = (dy / dist) * runSpeed;
             
@@ -313,8 +309,7 @@ export default function DigitalPet() {
           posRef.current.y += velRef.current.y;
           
         } else {
-          // Standard roaming and gravity behavior
-          // Apply Gravity if in the air relative to resting Y
+          // Standard gravity behavior
           if (posRef.current.y < restingYRef.current) {
             velRef.current.y += gravity;
             if (stateRef.current !== "fall") {
@@ -323,7 +318,6 @@ export default function DigitalPet() {
             }
           }
 
-          // Apply Friction
           const currentFriction = posRef.current.y >= restingYRef.current ? groundFriction : airFriction;
           velRef.current.x *= currentFriction;
 
@@ -352,7 +346,7 @@ export default function DigitalPet() {
           posRef.current.x += velRef.current.x;
           posRef.current.y += velRef.current.y;
 
-          // Ground collision (relative to resting Y)
+          // Ground collision
           if (posRef.current.y >= restingYRef.current) {
             posRef.current.y = restingYRef.current;
             if (Math.abs(velRef.current.y) > 2) {
@@ -364,7 +358,6 @@ export default function DigitalPet() {
                 setState("idle");
                 triggerBark("Plop! 🐶");
                 
-                // If thrown and landed, seek nearest corner
                 if (seekCornerAfterLandingRef.current) {
                   seekCornerAfterLandingRef.current = false;
                   setTimeout(() => {
@@ -409,16 +402,14 @@ export default function DigitalPet() {
         }
       }
 
-      // Sync React state
       setPos({ x: posRef.current.x, y: posRef.current.y });
 
-      // Update active particles positions (basic float animation)
       setParticles((prev) =>
         prev.map((p) => ({
           ...p,
           x: p.x + p.dx,
           y: p.y + p.dy,
-          dy: p.dy - 0.05, // accelerate upwards
+          dy: p.dy - 0.05,
         }))
       );
 
@@ -427,7 +418,6 @@ export default function DigitalPet() {
 
     animationFrameId = requestAnimationFrame(updatePhysics);
 
-    // Cleanups
     return () => {
       cancelAnimationFrame(animationFrameId);
       window.removeEventListener("mousemove", handleMouseMoveGlobal);
@@ -438,18 +428,385 @@ export default function DigitalPet() {
     };
   }, [state]);
 
+  // Setup Three.js WebGL Rendering
+  useEffect(() => {
+    if (!canvasRef.current) return;
+
+    // 1. Scene setup
+    const scene = new THREE.Scene();
+    
+    const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 100);
+    camera.position.set(0, 1.2, 5.0);
+    camera.lookAt(0, 0.15, 0);
+
+    const renderer = new THREE.WebGLRenderer({
+      canvas: canvasRef.current,
+      alpha: true,
+      antialias: true,
+    });
+    renderer.setSize(petWidth, petHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+    // 2. Lighting
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.75);
+    scene.add(ambientLight);
+
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.7);
+    dirLight.position.set(3, 5, 2);
+    scene.add(dirLight);
+
+    // 3. Materials
+    const orangeMat = new THREE.MeshStandardMaterial({ color: 0xE79E4A, roughness: 0.5 });
+    const whiteMat = new THREE.MeshStandardMaterial({ color: 0xFFF4E0, roughness: 0.5 });
+    const darkMat = new THREE.MeshStandardMaterial({ color: 0x1F1F1F, roughness: 0.8 });
+    const pinkMat = new THREE.MeshStandardMaterial({ color: 0xF4BCA3, roughness: 0.7 });
+
+    // 4. Construct stylized Corgi/Shiba meshes
+    const dogGroup = new THREE.Group();
+    scene.add(dogGroup);
+
+    // Body
+    const bodyGeo = new THREE.BoxGeometry(0.8, 0.55, 1.15);
+    const bodyMesh = new THREE.Mesh(bodyGeo, orangeMat);
+    bodyMesh.position.y = 0.25;
+    dogGroup.add(bodyMesh);
+
+    // White Chest Wrap
+    const chestGeo = new THREE.BoxGeometry(0.72, 0.48, 0.3);
+    const chestMesh = new THREE.Mesh(chestGeo, whiteMat);
+    chestMesh.position.set(0, -0.04, -0.44);
+    bodyMesh.add(chestMesh);
+
+    // Head pivot group
+    const headGroup = new THREE.Group();
+    headGroup.position.set(0, 0.7, -0.5);
+    dogGroup.add(headGroup);
+
+    // Head base block
+    const headGeo = new THREE.BoxGeometry(0.6, 0.6, 0.6);
+    const headMesh = new THREE.Mesh(headGeo, orangeMat);
+    headGroup.add(headMesh);
+
+    // Shiba Cheeks white sides
+    const cheekGeo = new THREE.BoxGeometry(0.66, 0.35, 0.35);
+    const cheekL = new THREE.Mesh(cheekGeo, whiteMat);
+    cheekL.position.set(0, -0.1, 0.08);
+    headMesh.add(cheekL);
+
+    // Muzzle Snout
+    const snoutGeo = new THREE.BoxGeometry(0.26, 0.2, 0.22);
+    const snoutMesh = new THREE.Mesh(snoutGeo, whiteMat);
+    snoutMesh.position.set(0, -0.1, -0.38);
+    headGroup.add(snoutMesh);
+
+    // Nose
+    const noseGeo = new THREE.BoxGeometry(0.1, 0.06, 0.06);
+    const noseMesh = new THREE.Mesh(noseGeo, darkMat);
+    noseMesh.position.set(0, 0.06, -0.12);
+    snoutMesh.add(noseMesh);
+
+    // Eyes
+    const eyeGeo = new THREE.BoxGeometry(0.08, 0.08, 0.08);
+    const eyeL = new THREE.Mesh(eyeGeo, darkMat);
+    eyeL.position.set(-0.2, 0.06, -0.28);
+    headGroup.add(eyeL);
+
+    const eyeR = new THREE.Mesh(eyeGeo, darkMat);
+    eyeR.position.set(0.2, 0.06, -0.28);
+    headGroup.add(eyeR);
+
+    // Pointy Shiba ears
+    const earGeo = new THREE.ConeGeometry(0.14, 0.26, 4);
+    earGeo.rotateY(Math.PI / 4);
+
+    const earL = new THREE.Mesh(earGeo, orangeMat);
+    earL.position.set(-0.22, 0.4, 0.02);
+    earL.rotation.z = 0.18;
+    earL.rotation.x = -0.1;
+    headGroup.add(earL);
+
+    const earInnerGeo = new THREE.ConeGeometry(0.09, 0.18, 4);
+    earInnerGeo.rotateY(Math.PI / 4);
+    const earInnerL = new THREE.Mesh(earInnerGeo, pinkMat);
+    earInnerL.position.set(0, 0.02, -0.03);
+    earL.add(earInnerL);
+
+    const earR = new THREE.Mesh(earGeo, orangeMat);
+    earR.position.set(0.22, 0.4, 0.02);
+    earR.rotation.z = -0.18;
+    earR.rotation.x = -0.1;
+    headGroup.add(earR);
+
+    const earInnerR = new THREE.Mesh(earInnerGeo, pinkMat);
+    earInnerR.position.set(0, 0.02, -0.03);
+    earR.add(earInnerR);
+
+    // Tail group
+    const tailGroup = new THREE.Group();
+    tailGroup.position.set(0, 0.4, 0.55);
+    dogGroup.add(tailGroup);
+
+    const tailGeo = new THREE.CylinderGeometry(0.06, 0.06, 0.35, 6);
+    tailGeo.translate(0, 0.18, 0);
+    const tailMesh = new THREE.Mesh(tailGeo, orangeMat);
+    tailMesh.rotation.x = Math.PI / 4.5;
+    tailGroup.add(tailMesh);
+
+    const tailTipGeo = new THREE.SphereGeometry(0.075, 5, 5);
+    const tailTip = new THREE.Mesh(tailTipGeo, whiteMat);
+    tailTip.position.y = 0.32;
+    tailMesh.add(tailTip);
+
+    // Legs Setup (Box legs for low-poly/voxel puppy)
+    const legGeo = new THREE.BoxGeometry(0.16, 0.44, 0.16);
+    const footGeo = new THREE.BoxGeometry(0.18, 0.08, 0.18);
+
+    const legFL = new THREE.Mesh(legGeo, orangeMat);
+    legFL.position.set(-0.25, -0.25, -0.32);
+    dogGroup.add(legFL);
+    const footFL = new THREE.Mesh(footGeo, whiteMat);
+    footFL.position.y = -0.2;
+    legFL.add(footFL);
+
+    const legFR = new THREE.Mesh(legGeo, orangeMat);
+    legFR.position.set(0.25, -0.25, -0.32);
+    dogGroup.add(legFR);
+    const footFR = new THREE.Mesh(footGeo, whiteMat);
+    footFR.position.y = -0.2;
+    legFR.add(footFR);
+
+    const legBL = new THREE.Mesh(legGeo, orangeMat);
+    legBL.position.set(-0.25, -0.25, 0.32);
+    dogGroup.add(legBL);
+    const footBL = new THREE.Mesh(footGeo, whiteMat);
+    footBL.position.y = -0.2;
+    legBL.add(footBL);
+
+    const legBR = new THREE.Mesh(legGeo, orangeMat);
+    legBR.position.set(0.25, -0.25, 0.32);
+    dogGroup.add(legBR);
+    const footBR = new THREE.Mesh(footGeo, whiteMat);
+    footBR.position.y = -0.2;
+    legBR.add(footBR);
+
+    // Center puppy position in scene frame
+    dogGroup.position.set(0, -0.05, 0);
+
+    // Animation frames
+    let frameId: number;
+    const clock = new THREE.Clock();
+
+    const renderAnim = () => {
+      frameId = requestAnimationFrame(renderAnim);
+      
+      const time = clock.getElapsedTime();
+      const current = stateRef.current;
+
+      // 1. Orient horizontal direction (Yaw rotation)
+      let targetRotY = directionRef.current === "right" ? Math.PI / 2 : -Math.PI / 2;
+      if (current === "sleep") {
+        targetRotY = directionRef.current === "right" ? Math.PI / 1.5 : -Math.PI / 1.5;
+      }
+      dogGroup.rotation.y += (targetRotY - dogGroup.rotation.y) * 0.16;
+
+      // Reset transforms
+      legFL.rotation.x = 0;
+      legFR.rotation.x = 0;
+      legBL.rotation.x = 0;
+      legBR.rotation.x = 0;
+      legFL.position.y = -0.25;
+      legFR.position.y = -0.25;
+      legBL.position.y = -0.25;
+      legBR.position.y = -0.25;
+
+      bodyMesh.rotation.set(0, 0, 0);
+      bodyMesh.position.y = 0.25;
+      headGroup.rotation.set(0, 0, 0);
+      headGroup.position.set(0, 0.7, -0.5);
+
+      earL.rotation.set(-0.1, 0, 0.18);
+      earR.rotation.set(-0.1, 0, -0.18);
+
+      // Eye pupil/Head looking direction
+      if (current !== "sleep" && current !== "drag") {
+        const petCenterX = posRef.current.x + petWidth / 2;
+        const petCenterY = posRef.current.y + petHeight / 2;
+        
+        const isMouseActive = Date.now() - lastMouseMoveTimeRef.current < 3000;
+        let tX = mousePos.x;
+        let tY = mousePos.y;
+        
+        if (!isMouseActive) {
+          const b = getBounds();
+          const nearestCornerX = posRef.current.x < b.maxX / 2 ? 0 : b.maxX;
+          const nearestCornerY = posRef.current.y < b.maxY / 2 ? 0 : b.maxY;
+          tX = nearestCornerX + (nearestCornerX === 0 ? petWidth / 3 : -petWidth / 3);
+          tY = nearestCornerY + (nearestCornerY === 0 ? petHeight / 3 : -petHeight / 3);
+        }
+
+        const dx = tX - petCenterX;
+        const dy = tY - petCenterY;
+
+        const faceFlip = directionRef.current === "left" ? -1 : 1;
+        const headTargetY = Math.min(Math.max(dx * 0.0016, -0.38), 0.38) * faceFlip;
+        const headTargetX = Math.min(Math.max(dy * 0.0016, -0.25), 0.25);
+
+        headGroup.rotation.y += (headTargetY - headGroup.rotation.y) * 0.12;
+        headGroup.rotation.x += (headTargetX - headGroup.rotation.x) * 0.12;
+      }
+
+      // State specific animations
+      if (current === "idle") {
+        // breathing bob
+        const bob = Math.sin(time * 3.2) * 0.015;
+        bodyMesh.position.y += bob;
+        headGroup.position.y = 0.7 + bob * 0.4;
+        
+        tailMesh.rotation.z = Math.sin(time * 4.5) * 0.15;
+        tailMesh.rotation.y = Math.cos(time * 4.5) * 0.08;
+
+        earL.rotation.z += Math.sin(time * 1.8) * 0.02;
+        earR.rotation.z -= Math.sin(time * 1.8) * 0.02;
+      } 
+      else if (current === "walk") {
+        // Leg swing walking cycles
+        const swing = Math.sin(time * 14.0) * 0.42;
+        legFL.rotation.x = swing;
+        legBR.rotation.x = swing;
+        legFR.rotation.x = -swing;
+        legBL.rotation.x = -swing;
+
+        bodyMesh.position.y += Math.sin(time * 28.0) * 0.025;
+        tailMesh.rotation.z = Math.sin(time * 14.0) * 0.3;
+      } 
+      else if (current === "run") {
+        // Faster swing for running
+        const swing = Math.sin(time * 26.0) * 0.65;
+        legFL.rotation.x = swing;
+        legBR.rotation.x = swing;
+        legFR.rotation.x = -swing;
+        legBL.rotation.x = -swing;
+
+        bodyMesh.position.y += Math.sin(time * 52.0) * 0.05;
+        bodyMesh.rotation.x = 0.06;
+        
+        tailMesh.rotation.z = Math.sin(time * 36.0) * 0.55;
+        headGroup.rotation.x += Math.sin(time * 52.0) * 0.04;
+      } 
+      else if (current === "sit") {
+        // Tucked sitting leg angles
+        legFL.rotation.x = -Math.PI / 3.2;
+        legFR.rotation.x = -Math.PI / 3.2;
+        legBL.rotation.x = Math.PI / 2.2;
+        legBR.rotation.x = Math.PI / 2.2;
+
+        legFL.position.y = -0.17;
+        legFR.position.y = -0.17;
+        legBL.position.y = -0.06;
+        legBR.position.y = -0.06;
+
+        bodyMesh.position.y = 0.14;
+        headGroup.position.y = 0.56;
+
+        tailMesh.rotation.z = Math.sin(time * 2.8) * 0.08;
+      } 
+      else if (current === "sleep") {
+        // Curled sleeping group angles
+        bodyMesh.rotation.y = Math.sin(time * 1.4) * 0.03;
+        bodyMesh.rotation.z = Math.PI / 2.15;
+        bodyMesh.position.y = 0.11;
+
+        headGroup.position.set(-0.2, 0.22, -0.38);
+        headGroup.rotation.z = 0.45;
+        headGroup.rotation.x = 0.12;
+
+        earL.rotation.z = 0.4;
+        earR.rotation.z = -0.4;
+
+        legFL.rotation.x = -Math.PI / 2.2;
+        legFR.rotation.x = -Math.PI / 2.2;
+        legBL.rotation.x = Math.PI / 2.2;
+        legBR.rotation.x = Math.PI / 2.2;
+        legFL.position.y = 0.02;
+        legFR.position.y = 0.02;
+        legBL.position.y = 0.05;
+        legBR.position.y = 0.05;
+
+        tailMesh.rotation.z = 0.08;
+      } 
+      else if (current === "drag") {
+        // Dangling limbs
+        const dangling = Math.sin(time * 16.0);
+        legFL.rotation.z = 0.35 + dangling * 0.12;
+        legFR.rotation.z = -0.35 - dangling * 0.12;
+        legBL.rotation.z = 0.25 + dangling * 0.12;
+        legBR.rotation.z = -0.25 - dangling * 0.12;
+
+        headGroup.rotation.z = Math.sin(time * 11.0) * 0.18;
+        headGroup.rotation.x = 0.12;
+        
+        tailMesh.rotation.x = 0;
+        tailMesh.rotation.z = 0;
+      } 
+      else if (current === "fall") {
+        const dangling = Math.sin(time * 22.0);
+        legFL.rotation.x = 0.25 + dangling * 0.18;
+        legFR.rotation.x = 0.25 - dangling * 0.18;
+        legBL.rotation.x = 0.18 + dangling * 0.12;
+        legBR.rotation.x = 0.18 - dangling * 0.12;
+
+        headGroup.rotation.x = -0.22;
+        tailMesh.rotation.z = Math.sin(time * 28.0) * 0.18;
+      }
+
+      renderer.render(scene, camera);
+    };
+
+    renderAnim();
+
+    const handleCanvasResize = () => {
+      renderer.setSize(petWidth, petHeight);
+    };
+    window.addEventListener("resize", handleCanvasResize);
+
+    return () => {
+      cancelAnimationFrame(frameId);
+      window.removeEventListener("resize", handleCanvasResize);
+      renderer.dispose();
+      
+      bodyGeo.dispose();
+      chestGeo.dispose();
+      headGeo.dispose();
+      cheekGeo.dispose();
+      snoutGeo.dispose();
+      noseGeo.dispose();
+      eyeGeo.dispose();
+      earGeo.dispose();
+      earInnerGeo.dispose();
+      legGeo.dispose();
+      footGeo.dispose();
+      tailGeo.dispose();
+      tailTipGeo.dispose();
+
+      orangeMat.dispose();
+      whiteMat.dispose();
+      darkMat.dispose();
+      pinkMat.dispose();
+    };
+  }, []);
+
   // Drag start
   const handleDragStart = (clientX: number, clientY: number) => {
     isDraggingRef.current = true;
     lastMouseRef.current = { x: clientX, y: clientY };
     
-    // Offset relative to the dog's top-left corner
     dragOffsetRef.current = {
       x: clientX - posRef.current.x,
       y: clientY - posRef.current.y,
     };
     
-    targetXRef.current = null; // cancel click target
+    targetXRef.current = null;
+    targetYRef.current = null;
     velRef.current = { x: 0, y: 0 };
     setState("drag");
     stateRef.current = "drag";
@@ -464,7 +821,6 @@ export default function DigitalPet() {
     const newX = clientX - dragOffsetRef.current.x;
     const newY = clientY - dragOffsetRef.current.y;
     
-    // Calculate throw velocity based on drag speeds
     velRef.current = {
       x: (clientX - lastMouseRef.current.x) * 0.8,
       y: (clientY - lastMouseRef.current.y) * 0.8,
@@ -472,7 +828,6 @@ export default function DigitalPet() {
 
     lastMouseRef.current = { x: clientX, y: clientY };
 
-    // Clamped coordinates during drag
     posRef.current = {
       x: Math.min(Math.max(0, newX), bounds.maxX),
       y: Math.min(Math.max(0, newY), bounds.maxY),
@@ -489,21 +844,19 @@ export default function DigitalPet() {
     const throwSpeed = Math.sqrt(velRef.current.x * velRef.current.x + velRef.current.y * velRef.current.y);
     
     if (throwSpeed > 2.5) {
-      // It is a throw! Let it bounce and fly. When it lands, seek the closest corner.
       restingYRef.current = bounds.maxY;
       seekCornerAfterLandingRef.current = true;
       stateRef.current = "fall";
       setState("fall");
       triggerBark("Wheee! 💨");
     } else {
-      // Gentle placement! Walk directly to closest corner
       seekNearestCorner();
     }
   };
 
   // Mouse drag handlers
   const onMouseDown = (e: React.MouseEvent) => {
-    if (e.button !== 0) return; // Left click only
+    if (e.button !== 0) return;
     e.stopPropagation();
     handleDragStart(e.clientX, e.clientY);
 
@@ -521,7 +874,7 @@ export default function DigitalPet() {
     window.addEventListener("mouseup", onMouseUp);
   };
 
-  // Touch drag handlers (Mobile/Tablet Support)
+  // Touch drag handlers
   const onTouchStart = (e: React.TouchEvent) => {
     e.stopPropagation();
     const touch = e.touches[0];
@@ -542,14 +895,14 @@ export default function DigitalPet() {
     window.addEventListener("touchend", onTouchEnd);
   };
 
-  // Click on pet directly triggers hearts and happy barks
+  // Click on pet directly triggers hearts and barks
   const handlePetClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (isDraggingRef.current) return;
 
     velRef.current = {
       x: (Math.random() - 0.5) * 6,
-      y: -Math.random() * 5 - 4, // jump up
+      y: -Math.random() * 5 - 4,
     };
     stateRef.current = "fall";
     setState("fall");
@@ -557,82 +910,10 @@ export default function DigitalPet() {
     const soundEffects = ["Bark! 🐶", "Woof woof! 🐾", "Love you! ❤️", "Awoo! 🌟", "Boing! ✨"];
     triggerBark(soundEffects[Math.floor(Math.random() * soundEffects.length)]);
 
-    // Spawn multiple hearts
     for (let i = 0; i < 4; i++) {
       setTimeout(() => spawnParticle("heart", petWidth / 2, 10), i * 120);
     }
   };
-
-  // Compute eye tracking pupil offset
-  const getPupilOffset = () => {
-    if (state === "sleep") return { left: { dx: 0, dy: 0 }, right: { dx: 0, dy: 0 } };
-    if (state === "drag" || state === "fall") {
-      return { left: { dx: 0, dy: 0 }, right: { dx: 0, dy: 0 } };
-    }
-
-    // Puppy visual midpoint
-    const petCenterX = pos.x + petWidth / 2;
-    const petCenterY = pos.y + petHeight / 2;
-
-    // Check if mouse is active (moved within last 3 seconds)
-    const isMouseActive = Date.now() - lastMouseMoveTimeRef.current < 3000;
-    
-    let targetX = mousePos.x;
-    let targetY = mousePos.y;
-
-    if (!isMouseActive) {
-      // Look towards nearest corner of the screen
-      const bounds = getBounds();
-      const nearestCornerX = pos.x < bounds.maxX / 2 ? 0 : bounds.maxX;
-      const nearestCornerY = pos.y < bounds.maxY / 2 ? 0 : bounds.maxY;
-      targetX = nearestCornerX + (nearestCornerX === 0 ? petWidth / 3 : -petWidth / 3);
-      targetY = nearestCornerY + (nearestCornerY === 0 ? petHeight / 3 : -petHeight / 3);
-    }
-
-    const dx = targetX - petCenterX;
-    const dy = targetY - petCenterY;
-    const distance = Math.sqrt(dx * dx + dy * dy);
-
-    if (distance === 0) return { left: { dx: 0, dy: 0 }, right: { dx: 0, dy: 0 } };
-
-    // Max pupil movement radius
-    const maxOffset = 2.2;
-    const scale = Math.min(maxOffset, distance * 0.05);
-
-    // Apply facing flip correction to horizontal offsets
-    const flip = direction === "left" ? -1 : 1;
-    const pupilX = (dx / distance) * scale * flip;
-    const pupilY = (dy / distance) * scale;
-
-    return {
-      left: { dx: pupilX, dy: pupilY },
-      right: { dx: pupilX, dy: pupilY },
-    };
-  };
-
-  const pupils = getPupilOffset();
-
-  // Determine animations based on current states
-  const tailClass = state === "run" ? "pet-wag-fast-anim" : (state === "walk" || state === "idle" ? "pet-wag-normal" : "");
-  const earClass = state !== "sleep" ? "pet-ear-flap-anim" : "";
-  const bodyBobClass = state === "sleep" ? "pet-bob-sleep" : (state === "idle" || state === "sit" ? "pet-bob-idle" : "");
-
-  let frontLeftLegClass = "";
-  let frontRightLegClass = "";
-  let backLeftLegClass = "";
-  let backRightLegClass = "";
-
-  if (state === "walk") {
-    frontLeftLegClass = "pet-leg-left";
-    backLeftLegClass = "pet-leg-left";
-    frontRightLegClass = "pet-leg-right";
-    backRightLegClass = "pet-leg-right";
-  } else if (state === "run") {
-    frontLeftLegClass = "pet-leg-left-run";
-    backLeftLegClass = "pet-leg-left-run";
-    frontRightLegClass = "pet-leg-right-run";
-    backRightLegClass = "pet-leg-right-run";
-  }
 
   return (
     <div
@@ -657,7 +938,7 @@ export default function DigitalPet() {
         <div
           className="absolute bg-white text-on-secondary-fixed border border-outline-variant font-headline-md font-bold px-3 py-1.5 rounded-2xl shadow-lg text-[11px] whitespace-nowrap text-center select-none pointer-events-none"
           style={{
-            bottom: "78px",
+            bottom: "102px", // shift up slightly for larger size
             left: "50%",
             transform: "translateX(-50%)",
             animation: "pet-bark 2.2s forwards",
@@ -665,7 +946,6 @@ export default function DigitalPet() {
           }}
         >
           {barkText}
-          {/* Bubble tail arrow */}
           <div className="absolute top-full left-1/2 -translate-x-1/2 border-x-4 border-x-transparent border-t-4 border-t-white"></div>
           <div className="absolute top-full left-1/2 -translate-x-1/2 border-x-4 border-x-transparent border-t-4 border-t-outline-variant -z-10 translate-y-[1px]"></div>
         </div>
@@ -685,7 +965,6 @@ export default function DigitalPet() {
                 animation: "pet-heart 1.2s forwards",
                 animationTimingFunction: "ease-out",
                 zIndex: 10000,
-                // Pass custom animation values
                 // @ts-ignore
                 "--dx": `${p.dx * 12}px`,
                 "--dy": `${p.dy * 15}px`,
@@ -713,206 +992,13 @@ export default function DigitalPet() {
         }
       })}
 
-      {/* The Puppy SVG Graphics */}
-      <svg
+      {/* Three.js 3D WebGL Canvas */}
+      <canvas
+        ref={canvasRef}
         width={petWidth}
         height={petHeight}
-        viewBox="0 0 72 72"
-        style={{
-          transform: `scaleX(${direction === "left" ? -1 : 1})`,
-          transformOrigin: "center center",
-        }}
         className="w-full h-full drop-shadow-md select-none pointer-events-none"
-      >
-        <g className={bodyBobClass}>
-          {/* TAIL */}
-          {state !== "sleep" && (
-            <g className={tailClass} style={{ transformOrigin: "48px 45px" }}>
-              {/* Shiba Inu Curly Tail */}
-              <path
-                d="M 48,45 C 55,42 61,35 58,26 C 56,21 49,23 50,28"
-                fill="none"
-                stroke="#E79E4A"
-                strokeWidth="7"
-                strokeLinecap="round"
-              />
-              <path
-                d="M 48,45 C 55,42 61,35 58,26 C 56,21 49,23 50,28"
-                fill="none"
-                stroke="#FFF4E0"
-                strokeWidth="3.5"
-                strokeLinecap="round"
-                className="opacity-70"
-              />
-              {/* White tail tip fluff */}
-              <circle cx="50" cy="27" r="4.5" fill="#FFF4E0" />
-            </g>
-          )}
-
-          {/* BACK LEGS (rendered behind body) */}
-          {state !== "sleep" && state !== "sit" && (
-            <>
-              {/* Back Left Leg */}
-              <g className={backLeftLegClass}>
-                <rect x="42" y="46" width="7" height="15" rx="3.5" fill="#C57E2F" />
-                <rect x="42" y="57" width="7" height="4" rx="2" fill="#FFF4E0" />
-              </g>
-              {/* Back Right Leg */}
-              <g className={backRightLegClass}>
-                <rect x="18" y="46" width="7" height="15" rx="3.5" fill="#C57E2F" />
-                <rect x="18" y="57" width="7" height="4" rx="2" fill="#FFF4E0" />
-              </g>
-            </>
-          )}
-
-          {/* BODY */}
-          {state === "sleep" ? (
-            // Curled up sleeping body
-            <g>
-              <ellipse cx="36" cy="46" rx="20" ry="16" fill="#E79E4A" />
-              {/* White chest circle patch visible when sleeping */}
-              <ellipse cx="28" cy="48" rx="10" ry="9" fill="#FFF4E0" />
-              {/* Sleeping tucked paw */}
-              <rect x="34" y="51" width="7" height="11" rx="3.5" transform="rotate(45 34 51)" fill="#FFF4E0" />
-            </g>
-          ) : state === "sit" ? (
-            // Sitting body
-            <g>
-              <ellipse cx="34" cy="47" rx="18" ry="15" fill="#E79E4A" />
-              <path d="M 20,40 C 20,48 26,58 35,58 C 44,58 50,48 50,40 Z" fill="#E79E4A" />
-              <path d="M 24,42 Q 34,44 44,42 C 40,54 28,54 24,42" fill="#FFF4E0" />
-              
-              {/* Front legs resting on ground while sitting */}
-              <rect x="25" y="48" width="6" height="14" rx="3" fill="#FFF4E0" />
-              <rect x="37" y="48" width="6" height="14" rx="3" fill="#FFF4E0" />
-              {/* Tucked back leg circles */}
-              <circle cx="18" cy="53" r="6.5" fill="#C57E2F" />
-              <rect x="15" y="53" width="9" height="7" rx="3.5" fill="#FFF4E0" />
-            </g>
-          ) : (
-            // Standing/Walking body
-            <g>
-              <ellipse cx="33" cy="43" rx="19" ry="13.5" fill="#E79E4A" />
-              {/* White chest wrap patch */}
-              <path d="M 14,40 C 14,35 22,33 27,33 C 32,33 37,36 37,42 C 37,47 28,51 20,51 C 15,51 14,45 14,40 Z" fill="#FFF4E0" />
-            </g>
-          )}
-
-          {/* FRONT LEGS (rendered in front of body) */}
-          {state !== "sleep" && state !== "sit" && (
-            <>
-              {/* Front Left Leg */}
-              <g className={frontLeftLegClass}>
-                <rect x="34" y="46" width="7" height="16" rx="3.5" fill="#E79E4A" />
-                <rect x="34" y="58" width="7" height="4" rx="2" fill="#FFF4E0" />
-              </g>
-              {/* Front Right Leg */}
-              <g className={frontRightLegClass}>
-                <rect x="26" y="46" width="7" height="16" rx="3.5" fill="#E79E4A" />
-                <rect x="26" y="58" width="7" height="4" rx="2" fill="#FFF4E0" />
-              </g>
-            </>
-          )}
-
-          {/* HEAD */}
-          <g
-            style={{
-              transform: state === "sleep" ? "translate(0px, 15px)" : state === "sit" ? "translate(-2px, 2px)" : "translate(0px, 0px)",
-              transformOrigin: "26px 27px",
-            }}
-          >
-            {/* EARS */}
-            <g className={earClass}>
-              {state === "sleep" ? (
-                // Floppy/droopy ears during sleep
-                <>
-                  <polygon points="12,25 6,32 15,31" fill="#C57E2F" />
-                  <polygon points="13,26 8,31 14,30" fill="#E28F8F" />
-                  
-                  <polygon points="34,23 37,30 29,29" fill="#C57E2F" />
-                  <polygon points="33,24 35,29 30,28" fill="#E28F8F" />
-                </>
-              ) : (
-                // Pointy cute alert Shiba ears
-                <>
-                  {/* Left Ear */}
-                  <polygon points="12,24 6,11 18,17" fill="#E79E4A" />
-                  <polygon points="10,21 8,14 15,18" fill="#F4BCA3" />
-                  {/* Right Ear */}
-                  <polygon points="35,21 40,7 28,15" fill="#E79E4A" />
-                  <polygon points="33,18 36,10 28,15" fill="#F4BCA3" />
-                </>
-              )}
-            </g>
-
-            {/* HEAD MAIN */}
-            <circle cx="24" cy="27" r="14" fill="#E79E4A" />
-
-            {/* Cheek white spots (Shiba markings) */}
-            <path
-              d="M 11,29 C 11,35 18,39 24,39 C 30,39 37,35 37,29 C 37,23 30,26 24,26 C 18,26 11,23 11,29 Z"
-              fill="#FFF4E0"
-            />
-
-            {/* SNOUT / MUZZLE */}
-            <ellipse cx="24" cy="31" rx="5" ry="4" fill="#FFF" />
-            {/* Nose */}
-            <path d="M 22,30 Q 24,29 26,30 Q 25,32 24,32 Q 23,32 22,30 Z" fill="#1A1A1A" />
-            {/* Mouth */}
-            {state === "sleep" ? (
-              <path d="M 22,33 Q 24,32 26,33" stroke="#9E9E9E" strokeWidth="1" fill="none" strokeLinecap="round" />
-            ) : (
-              <path d="M 21.5,33 C 22.5,34.5 24,34.5 24,33 C 24,34.5 25.5,34.5 26.5,33" stroke="#3A3A3A" strokeWidth="1.2" fill="none" strokeLinecap="round" />
-            )}
-
-            {/* EYES */}
-            {state === "sleep" ? (
-              // Sleeping closed eyes
-              <>
-                {/* Left Eye */}
-                <path d="M 14,27 Q 17,30 20,27" stroke="#1A1A1A" strokeWidth="1.8" fill="none" strokeLinecap="round" />
-                {/* Right Eye */}
-                <path d="M 28,27 Q 31,30 34,27" stroke="#1A1A1A" strokeWidth="1.8" fill="none" strokeLinecap="round" />
-              </>
-            ) : state === "drag" || state === "fall" ? (
-              // Dizzy/Surprised eyes during throw/drag
-              <>
-                {/* Left Dizzy Eye (X) */}
-                <g transform="translate(14, 23)">
-                  <line x1="0" y1="0" x2="4" y2="4" stroke="#1A1A1A" strokeWidth="2.2" strokeLinecap="round" />
-                  <line x1="4" y1="0" x2="0" y2="4" stroke="#1A1A1A" strokeWidth="2.2" strokeLinecap="round" />
-                </g>
-                {/* Right Dizzy Eye (X) */}
-                <g transform="translate(29, 23)">
-                  <line x1="0" y1="0" x2="4" y2="4" stroke="#1A1A1A" strokeWidth="2.2" strokeLinecap="round" />
-                  <line x1="4" y1="0" x2="0" y2="4" stroke="#1A1A1A" strokeWidth="2.2" strokeLinecap="round" />
-                </g>
-              </>
-            ) : (
-              // Normal eyes with cursor tracking
-              <>
-                {/* Left Eye Socket */}
-                <ellipse cx="16" cy="25" rx="2.5" ry="3.5" fill="#1A1A1A" />
-                {/* Right Eye Socket */}
-                <ellipse cx="31" cy="25" rx="2.5" ry="3.5" fill="#1A1A1A" />
-
-                {/* Left Pupil Highlight */}
-                <circle cx={16 + pupils.left.dx} cy={24.2 + pupils.left.dy} r="0.9" fill="#FFF" />
-                {/* Right Pupil Highlight */}
-                <circle cx={31 + pupils.right.dx} cy={24.2 + pupils.right.dy} r="0.9" fill="#FFF" />
-              </>
-            )}
-
-            {/* Blush Spots (adds premium cute details!) */}
-            {state !== "sleep" && (
-              <>
-                <circle cx="11.5" cy="29" r="1.8" fill="#FFA5A5" className="opacity-70" />
-                <circle cx="35.5" cy="29" r="1.8" fill="#FFA5A5" className="opacity-70" />
-              </>
-            )}
-          </g>
-        </g>
-      </svg>
+      />
     </div>
   );
 }
