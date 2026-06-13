@@ -182,14 +182,31 @@ export default function DigitalPet() {
 
   // Setup loop
   useEffect(() => {
-    // Spawn in extreme bottom-right corner
+    // Spawn in extreme bottom-right corner or load from localStorage
     const bounds = getBounds();
+    
+    let initialX = bounds.maxX;
+    let initialY = bounds.maxY;
+    
+    try {
+      const saved = localStorage.getItem("digital_pet_pos");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (typeof parsed.x === "number" && typeof parsed.y === "number") {
+          initialX = Math.min(Math.max(0, parsed.x), bounds.maxX);
+          initialY = Math.min(Math.max(0, parsed.y), bounds.maxY);
+        }
+      }
+    } catch (e) {
+      console.warn("Could not load pet position:", e);
+    }
+
     posRef.current = {
-      x: bounds.maxX,
-      y: bounds.maxY,
+      x: initialX,
+      y: initialY,
     };
-    restingYRef.current = bounds.maxY;
-    directionRef.current = "right"; // initially look right at corner
+    restingYRef.current = initialY;
+    directionRef.current = "right"; // initially look right
     setDirection("right");
     setPos({ ...posRef.current });
 
@@ -220,47 +237,17 @@ export default function DigitalPet() {
       }
       posRef.current.x = Math.min(posRef.current.x, b.maxX);
       posRef.current.y = Math.min(posRef.current.y, b.maxY);
+      
+      try {
+        localStorage.setItem("digital_pet_pos", JSON.stringify({
+          x: posRef.current.x,
+          y: posRef.current.y
+        }));
+      } catch (e) {
+        console.warn("Could not save pet position:", e);
+      }
     };
     window.addEventListener("resize", handleResize);
-
-    // Global click listener to make pet run to location
-    const handleWindowClick = (e: MouseEvent) => {
-      // If we just finished a drag release, consume this click event
-      if (justDraggedRef.current) {
-        justDraggedRef.current = false;
-        return;
-      }
-
-      const target = e.target as HTMLElement;
-      if (
-        target.closest("button") ||
-        target.closest("input") ||
-        target.closest("a") ||
-        target.closest("select") ||
-        target.closest("textarea") ||
-        target.closest("form") ||
-        target.closest("nav") ||
-        isDraggingRef.current
-      ) {
-        return;
-      }
-
-      const bounds = getBounds();
-      const clickX = e.clientX - petWidth / 2;
-      targetXRef.current = Math.min(Math.max(0, clickX), bounds.maxX);
-
-      stateRef.current = "run";
-      setState("run");
-      
-      const toLeft = targetXRef.current < posRef.current.x;
-      directionRef.current = toLeft ? "left" : "right";
-      setDirection(toLeft ? "left" : "right");
-      velRef.current.x = toLeft ? -runSpeed : runSpeed;
-
-      triggerBark(Math.random() > 0.5 ? "Run! ⚡" : "Let's go!");
-      spawnParticle("heart", petWidth / 2, 0);
-    };
-    window.addEventListener("click", handleWindowClick);
 
     // Physics Update Loop
     let animationFrameId: number;
@@ -358,6 +345,15 @@ export default function DigitalPet() {
                 setState("idle");
                 triggerBark("Plop! 🐶");
                 
+                try {
+                  localStorage.setItem("digital_pet_pos", JSON.stringify({
+                    x: posRef.current.x,
+                    y: posRef.current.y
+                  }));
+                } catch (e) {
+                  console.warn("Could not save pet position:", e);
+                }
+                
                 if (seekCornerAfterLandingRef.current) {
                   seekCornerAfterLandingRef.current = false;
                   setTimeout(() => {
@@ -421,7 +417,6 @@ export default function DigitalPet() {
     return () => {
       cancelAnimationFrame(animationFrameId);
       window.removeEventListener("mousemove", handleMouseMoveGlobal);
-      window.removeEventListener("click", handleWindowClick);
       window.removeEventListener("resize", handleResize);
       if (decisionTimerRef.current) clearTimeout(decisionTimerRef.current);
       if (barkTimeoutRef.current) clearTimeout(barkTimeoutRef.current);
@@ -902,6 +897,15 @@ export default function DigitalPet() {
     stateRef.current = "idle";
     setState("idle");
     triggerBark("Stay! 📍");
+    
+    try {
+      localStorage.setItem("digital_pet_pos", JSON.stringify({
+        x: posRef.current.x,
+        y: posRef.current.y
+      }));
+    } catch (e) {
+      console.warn("Could not save pet position:", e);
+    }
     
     for (let i = 0; i < 2; i++) {
       spawnParticle("heart", petWidth / 2, 10);
